@@ -1,0 +1,34 @@
+{
+  "initiators": [{
+    "type": "fluxmonitor",
+    "params": {
+      "address": "0x3cCad4715152693fE3BC4460591e3D3Fbd071b42",
+      "requestdata": {
+        "data":{"coin":"ETH","market":"USD"}
+      },
+      "feeds": [ "https://lambda.staging.devnet.tools/bnc/call" ],
+      "idleThreshold": "1h",
+      "threshold": 0.5,
+      "precision": 2
+    }
+  }],
+  "tasks": [
+    {
+      "type": "multiply",
+      "confirmations": null,
+      "params": {
+        "times": 100
+      }
+    },
+    {
+      "type": "ethint256",
+      "confirmations": null,
+      "params": {}
+    },
+    {
+      "type": "ethtx",
+      "confirmations": null,
+      "params": {}
+    }
+  ]
+}
