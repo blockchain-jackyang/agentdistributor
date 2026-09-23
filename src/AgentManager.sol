@@ -6,17 +6,11 @@ import "./IAgentManager.sol";
 contract AgentManager is IAgentManager {
     address public multisigWallet;
 
-    struct AgentInfo {
-        address upline;      // 上级代理地址，0表示无上级
-        uint256 share;       // 分成比例，单位：基点（1/10000），例如 500 = 5%
-        bool exists;
-    }
-
     mapping(address => AgentInfo) public agents;
 
     event AgentRegistered(address indexed agent, address indexed upline, uint256 share);
     event AgentShareUpdated(address indexed agent, uint256 newShare);
-    event MultisigUpdated(address indexed newMultisig);
+    event MultisigUpdated(address indexed oldMultisig, address indexed newMultisig);
 
     modifier onlyMultisig() {
         _onlyMultisig();
@@ -61,8 +55,11 @@ contract AgentManager is IAgentManager {
     // 更新多签钱包地址，仅当前多签自己调用（可通过多签交易执行）
     function updateMultisig(address _newMultisig) external onlyMultisig {
         require(_newMultisig != address(0), "invalid multisig");
+        address oldMultisig = multisigWallet;
+
+        // forge-lint: disable-next-line(missing-events-access-control)
         multisigWallet = _newMultisig;
-        emit MultisigUpdated(_newMultisig);
+        emit MultisigUpdated(oldMultisig, multisigWallet);
     }
 
     // 查询代理信息
@@ -82,5 +79,25 @@ contract AgentManager is IAgentManager {
             return agents[_agent].share;
         }
         return 0; // 未注册代理视为0分成
+    }
+
+    function getAgentChain(address start, uint256 maxDepth) external view returns (AgentInfo[] memory chain)
+    {
+        chain = new AgentInfo[](maxDepth);
+        address current = start;
+        uint256 count = 0;
+
+        while (current != address(0) && count < maxDepth) {
+            AgentInfo storage info = agents[current];
+            if (!info.exists) break;
+            chain[count] = info;
+            current = info.upline;
+            count++;
+        }
+
+        // 截断到实际长度
+        assembly {
+            mstore(chain, count)
+        }
     }
 }

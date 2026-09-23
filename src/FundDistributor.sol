@@ -24,7 +24,7 @@ contract FundDistributor is ReentrancyGuard {
     event PlatformWithdrawn(address indexed to, uint256 amount);
     event AutoTransfer(uint256 amount, address indexed multisig);
     event ThresholdUpdated(uint256 newThreshold);
-    event MultisigUpdated(address indexed newMultisig);
+    event MultisigUpdated(address indexed oldMultisig, address indexed newMultisig);
     event DefaultShareUpdated(uint256 newDefaultShare);
     event AgentManagerUpdated(address indexed newManager);
 
@@ -63,28 +63,21 @@ contract FundDistributor is ReentrancyGuard {
         usdt.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint256 remaining = _amount;
-        address current = _agent;
         uint256 maxDepth = 10; // 防止 gas 耗尽
 
-        while (current != address(0) && remaining > 0 && maxDepth-- > 0) {
-            
-            (address upline, uint256 share, bool exists) = agentManager.getAgentInfo(current);
-            
-            if (!exists) break;
+        IAgentManager.AgentInfo[] memory chain = agentManager.getAgentChain(_agent, maxDepth);
 
-            if (share == 0) {
-                share = defaultShare; // 未注册代理使用默认比例
+        for(uint256 i = 0; i < chain.length && remaining > 0; i++) {
+            
+            uint256 share = chain[i].share == 0 ? defaultShare : chain[i].share;
+            if (share == 0) continue;
+
+            uint256 reward = remaining * share / 10000;
+            if (reward > 0) {
+                pendingRewards[chain[i].upline] += reward; // 注意：这里存的应是当前代理
+                remaining -= reward;
+                emit RewardsDistributed(chain[i].upline, reward);
             }
-            if (share > 0) {
-                // 从剩余金额中计算该代理应得（基于当前剩余）
-                uint256 reward = remaining * share / 10000;
-                if (reward > 0) {
-                    pendingRewards[current] += reward; // 记账
-                    remaining -= reward;
-                    emit RewardsDistributed(current, reward);
-                }
-            }
-            current = upline; // 移动到上级
         }
 
         // 剩余部分累加到平台资金池
@@ -122,8 +115,11 @@ contract FundDistributor is ReentrancyGuard {
 
     function setMultisigWallet(address _newMultisig) external onlyMultisig {
         require(_newMultisig != address(0), "invalid address");
+        address oldMultisig = multisigWallet;
+        
+        // forge-lint: disable-next-line(missing-events-access-control)
         multisigWallet = _newMultisig;
-        emit MultisigUpdated(_newMultisig);
+        emit MultisigUpdated(oldMultisig,multisigWallet);
     }
 
     function setDefaultShare(uint256 _newDefaultShare) external onlyMultisig {
